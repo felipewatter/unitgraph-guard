@@ -1,0 +1,86 @@
+name: Publish release after successful CI
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: unitgraph-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout the exact CI-tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Verify provenance, tag and version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CI_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$CI_SHA" || { echo 'main advanced after CI; refusing stale release'; exit 1; }
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" --jq '.conclusion')" = 'success'
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" --jq '.head_sha')" = "$CI_SHA"
+          VERSION="v$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "$VERSION" = "v$(PYTHONPATH=src python -c 'from unitgraph_guard import __version__; print(__version__)')"
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Already released: $VERSION. Immutable release preserved."
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+          else
+            if git ls-remote --tags origin "refs/tags/$VERSION" | grep -q .; then
+              echo "Tag $VERSION already exists without release. Refusing reuse."
+              exit 1
+            fi
+            echo 'skip=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+        id: verified
+      - name: Re-run tests on release runner
+        if: steps.verified.outputs.skip == 'false'
+        run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: src
+      - name: Build wheel, source archive and SHA-256 checksums
+        if: steps.verified.outputs.skip == 'false'
+        run: |
+          python -m pip wheel --no-deps . -w dist
+          python scripts/build_release.py dist
+      - name: Publish immutable tag and artifacts
+        if: steps.verified.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_TAG: ${{ steps.verified.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$CI_SHA" || { echo 'main advanced before publication; refusing'; exit 1; }
+          gh release create "$RELEASE_TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$CI_SHA" \
+            --title "UnitGraph Guard $RELEASE_TAG" \
+            --notes-file docs/RELEASE_NOTES.md \
+            --latest

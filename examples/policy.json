@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "criticalUnits": ["api.service", "database.service"],
+  "allowedRootUnits": [],
+  "forbiddenDependencies": ["rescue.target", "debug-root.service"],
+  "strictDependencies": false
+}

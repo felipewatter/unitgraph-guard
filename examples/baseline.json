@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "units": [
+    {
+      "name": "api.service",
+      "content": "[Unit]\nDescription=Example HTTP API\nWants=network-online.target\nAfter=network-online.target database.service\n[Service]\nUser=api\nExecStart=/usr/local/bin/api-server --listen 127.0.0.1:8080\nNoNewPrivileges=yes\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nRestrictAddressFamilies=AF_UNIX AF_INET\nSystemCallFilter=@system-service\nUMask=0077\n[Install]\nWantedBy=multi-user.target\n",
+      "dropins": [
+        {"name": "10-logging.conf", "content": "[Service]\nEnvironment=LOG_LEVEL=info\n"}
+      ]
+    },
+    {
+      "name": "database.service",
+      "content": "[Unit]\nDescription=Example database service\n[Service]\nDynamicUser=yes\nExecStart=/usr/local/bin/db-server --socket /run/db/db.sock\nPrivateTmp=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nRestrictAddressFamilies=AF_UNIX\nSystemCallFilter=@system-service\nUMask=0077\n"
+    }
+  ]
+}

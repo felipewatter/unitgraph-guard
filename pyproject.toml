@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=75,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unitgraph-guard"
+version = "0.1.0"
+description = "Offline systemd unit hardening and dependency graph regression gate"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Felipe Watter"}]
+keywords = ["systemd", "linux-security", "devsecops", "unit-files", "hardening", "sarif", "change-detection"]
+classifiers = ["Programming Language :: Python :: 3", "Operating System :: OS Independent", "Topic :: Security", "Topic :: System :: Systems Administration"]
+dependencies = []
+
+[project.scripts]
+unitgraph = "unitgraph_guard.cli:main"
+
+[project.urls]
+Repository = "https://github.com/felipewatter/unitgraph-guard"
+Issues = "https://github.com/felipewatter/unitgraph-guard/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+branch = true
+source = ["unitgraph_guard"]
+
+[tool.coverage.report]
+show_missing = true
